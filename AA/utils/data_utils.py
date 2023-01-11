@@ -1,8 +1,14 @@
 import os
 import random
+import string
 import numpy as np
 
-_vocabs = {}
+from collections import Counter
+from tqdm import tqdm
+
+_vocab_cnt = {}
+_vocab_to_id = {}
+_vocab = []
 
 # Assuming negative label is 0 and positive is 1
 def get_raw_data(data_dir):
@@ -16,8 +22,30 @@ def get_raw_data(data_dir):
 
 
 def build_data(data, dev_ratio: float = 0.1, test_ratio: float = 0.1):
-    train_eval_sep = int(len(data) * dev_ratio)
-    eval_test_sep = int(len(data) * (dev_ratio + test_ratio))
+    dev_test_sep = int(len(data) * dev_ratio)
+    test_train_sep = int(len(data) * (dev_ratio + test_ratio))
     random.shuffle(data)
-    train_data, eval_data, test_data = data[:train_eval_sep], data[train_eval_sep:eval_test_sep], data[eval_test_sep:]
+    eval_data, test_data, train_data = data[:dev_test_sep], data[dev_test_sep:test_train_sep], data[test_train_sep:]
     return train_data, eval_data, test_data
+
+def text_to_feature(text: str):
+    # Removing punctuations
+    text = text.translate(str.maketrans('', '', string.punctuation))
+    # Converting all words to lower cases
+    text = text.lower()
+    # Converting newline into spaces, and separate by space for tokenization
+    text = text.replace('\n', ' ').split()
+    for word in set(text):
+        if word not in _vocab_cnt:
+            _vocab_cnt[word] = 1
+            _vocab_to_id[word] = len(_vocab_to_id)
+            _vocab.append(word)
+        else:
+            _vocab_cnt[word] += 1
+    return dict(Counter(text))
+
+def data_to_feature(data):
+    # Extracting TF_IDF feature from raw texts
+    data_with_cnt = [(text_to_feature(x), y) for x, y in tqdm(data)]
+    data_with_tfidf = [(np.array([(x[word] if word in x else 0) * np.log(len(data_with_cnt) / _vocab_cnt[word]) for word in _vocab]), y) for x, y in tqdm(data_with_cnt)]
+    return data_with_tfidf
