@@ -66,3 +66,10 @@ def data_to_feature(data, cutoff=50):
     _vocab_cnt = new_vocab_cnt
     data_with_tfidf = [(np.array([(x[word] if word in x else 0) * np.log(len(data_with_cnt) / _vocab_cnt[word]) for word in _vocab]), y) for x, y in tqdm(data_with_cnt)]
     return data_with_tfidf, _vocab, _vocab_cnt
+
+
+def load_lexicon(data_dir):
+    negative_fn, positive_fn = os.path.join(data_dir, 'negative-words.txt'), os.path.join(data_dir, 'positive-words.txt')
+    negative, positive = open(negative_fn, 'r', encoding="ISO-8859-1").read().splitlines(), open(positive_fn, 'r', encoding="ISO-8859-1").read().splitlines()
+    negative, positive = [l for l in negative if len(l) and l[0] != ';'], [l for l in positive if len(l) and l[0] != ';']
+    return set(negative), set(positive)

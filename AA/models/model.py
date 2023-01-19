@@ -40,3 +40,25 @@ class LogisticRegression:
     
     def train(self):
         self.training = True
+        
+        
+class LexiconModel:
+    def __init__(self, negatives, positives):
+        self.negatives = negatives
+        self.positives = positives
+        
+    def predict(self, x):
+        score = 0
+        if isinstance(x, list):
+            for v in x:
+                if v in self.negatives:
+                    score -= 1
+                elif v in self.positives:
+                    score += 1
+        elif isinstance(x, dict):
+            for v in x:
+                if v in self.negatives:
+                    score -= x[v]
+                elif v in self.positives:
+                    score += x[v]
+        return score
