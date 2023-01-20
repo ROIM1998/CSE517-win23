@@ -6,12 +6,15 @@ from utils.data_utils import get_raw_data, text_to_feature, build_data, data_to_
 from utils.tokenizer import Tokenizer
 from tqdm import tqdm
 
+def comb(n, k):
+    return np.math.factorial(n) / (np.math.factorial(k) * np.math.factorial(n - k))
 
 def test(model, dataset):
     model.eval()
     losses = []
     acc = []
     all_outputs = []
+    all_labels = []
     for inputs, labels in dataset:
         loss, outputs = model.forward(inputs, labels)
         outputs = np.where(outputs > 0.5, 1, 0)
@@ -19,14 +22,20 @@ def test(model, dataset):
         accuracy = np.mean(outputs == labels)
         losses.append(loss)
         acc.append(accuracy)
+        all_labels.append(labels)
+    precision = len([1 for i, j in zip(all_outputs, all_labels) if i == j and i == 1]) / len([1 for i in all_outputs if i == 1]) if len([1 for i in all_outputs if i == 1]) else 0
+    recall = len([1 for i, j in zip(all_outputs, all_labels) if i == j and i == 1]) / len([1 for i in all_labels if i == 1])
     return {
         'loss': np.mean(losses),
-        'accuracy': np.mean(acc)
+        'accuracy': np.mean(acc),
+        'precision': precision,
+        'recall': recall,
+        'f1': 2 * precision * recall / (precision + recall),
     }, all_outputs
 
 if __name__ == '__main__':
     if len(sys.argv) == 1:
-        cutoff, lr = 20, 0.1
+        cutoff, lr = 50, 0.3
     elif len(sys.argv) == 3:
         cutoff, lr = int(sys.argv[1]), float(sys.argv[2])
     else:
@@ -45,6 +54,7 @@ if __name__ == '__main__':
     best_eval_loss = 0
     best_epoch = -1
     best_output = None
+    best_metric = None
     for i in range(epochs):
         for inputs, labels in train_dataset:
             loss, outputs = model.forward(inputs, labels)
@@ -61,6 +71,7 @@ if __name__ == '__main__':
                     best_epoch = i
                     best_eval_loss = eval_metrics['loss']
                     best_output = outputs
+                    best_metric = eval_metrics
                 model.train()
             training_step += 1
     print(f'Best accuracy: {best_acc}')
@@ -69,6 +80,9 @@ if __name__ == '__main__':
         'best_accuracy': best_acc,
         'eval_loss': best_eval_loss,
         'training_loss': train_metrics['loss'],
+        'precision': best_metric['precision'],
+        'recall': best_metric['recall'],
+        'f1': best_metric['f1'],
     }, open('results/logistic_regression-cutoff%d-lr%f.json' % (cutoff, lr), 'w'), indent=4, sort_keys=True)
 
     negatives, positives = load_lexicon('lexicon')
@@ -77,7 +91,28 @@ if __name__ == '__main__':
     prediction = [l_model.predict(text) for text, label in l_data]
     labels = np.array([label for text, label in l_data])
     is_positive = np.array([int(v > 0) for v in prediction])
+    l_precision = sum(labels & is_positive) / sum(is_positive)
+    l_recall = sum(labels & is_positive) / sum(labels)
+    l_f1 = 2 * l_precision * l_recall / (l_precision + l_recall)
     accuracy = np.mean(is_positive == labels)
-    print(f'Lexicon accuracy: {accuracy}')
+    print(f'Lexicon accuracy: {accuracy}, precision: {l_precision}, recall: {l_recall}, f1: {l_f1}')
     
-    lexicon_pos_logistic_neg_select, lexicon_neg_logistic_pos_select, both_neg_select = analyze_model_diff(labels, is_positive, best_output, eval_data)
+    # Significance test below
+    alpha = 0.05
+    logi_1_lexi_1, logi_1_lexi_0, logi_0_lexi_1, logi_0_lexi_0 = 0, 0, 0, 0
+    for logi, lexi, l in zip(best_output, is_positive, labels):
+        logi_correct, lexi_correct = logi == l, lexi == l
+        if logi_correct and lexi_correct:
+            logi_1_lexi_1 += 1
+        elif logi_correct and not lexi_correct:
+            logi_1_lexi_0 += 1
+        elif not logi_correct and lexi_correct:
+            logi_0_lexi_1 += 1
+        elif not logi_correct and not lexi_correct:
+            logi_0_lexi_0 += 1
+    k = min(logi_1_lexi_0, logi_0_lexi_1)
+    p = 1 / (2 ** (logi_1_lexi_0 + logi_0_lexi_1 - 1)) * sum([comb(logi_1_lexi_0 + logi_0_lexi_1, j) for j in range(k + 1)])
+    if p < 0.05:
+        print("Reject null hypothesis, the difference is significant")
+    else:
+        print("Accept null hypothesis, the difference is not significant")
