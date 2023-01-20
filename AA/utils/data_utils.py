@@ -1,5 +1,6 @@
 import os
 import random
+random.seed(123)
 import string
 import numpy as np
 
@@ -73,3 +74,16 @@ def load_lexicon(data_dir):
     negative, positive = open(negative_fn, 'r', encoding="ISO-8859-1").read().splitlines(), open(positive_fn, 'r', encoding="ISO-8859-1").read().splitlines()
     negative, positive = [l for l in negative if len(l) and l[0] != ';'], [l for l in positive if len(l) and l[0] != ';']
     return set(negative), set(positive)
+
+
+def analyze_model_diff(labels, is_positive, best_output, eval_data):
+    human_positive = [i for i, v in enumerate(labels) if v]
+    lexicon_pos_logistic_neg = [i for i in human_positive if is_positive[i] and not best_output[i]]
+    lexicon_neg_logistic_pos = [i for i in human_positive if not is_positive[i] and best_output[i]]
+    both_neg = [i for i in human_positive if not is_positive[i] and not best_output[i]]
+    
+    # Select the shortest text for better printing
+    lexicon_pos_logistic_neg_select = sorted(lexicon_pos_logistic_neg, key=lambda i: len(eval_data[i][0]))[:10]
+    lexicon_neg_logistic_pos_select = sorted(lexicon_neg_logistic_pos, key=lambda i: len(eval_data[i][0]))[:10]
+    both_neg_select = sorted(both_neg, key=lambda i: len(eval_data[i][0]))[:10]
+    return lexicon_pos_logistic_neg_select, lexicon_neg_logistic_pos_select, both_neg_select
