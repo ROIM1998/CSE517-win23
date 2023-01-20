@@ -83,7 +83,7 @@ def analyze_model_diff(labels, is_positive, best_output, eval_data):
     both_neg = [i for i in human_positive if not is_positive[i] and not best_output[i]]
     
     # Select the shortest text for better printing
-    lexicon_pos_logistic_neg_select = sorted(lexicon_pos_logistic_neg, key=lambda i: len(eval_data[i][0]))[:10]
-    lexicon_neg_logistic_pos_select = sorted(lexicon_neg_logistic_pos, key=lambda i: len(eval_data[i][0]))[:10]
-    both_neg_select = sorted(both_neg, key=lambda i: len(eval_data[i][0]))[:10]
+    lexicon_pos_logistic_neg_select = sorted(lexicon_pos_logistic_neg, key=lambda i: len(eval_data[i][0]))
+    lexicon_neg_logistic_pos_select = sorted(lexicon_neg_logistic_pos, key=lambda i: len(eval_data[i][0]))
+    both_neg_select = sorted(both_neg, key=lambda i: len(eval_data[i][0]))
     return lexicon_pos_logistic_neg_select, lexicon_neg_logistic_pos_select, both_neg_select
