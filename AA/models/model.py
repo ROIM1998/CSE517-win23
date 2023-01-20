@@ -1,4 +1,5 @@
 import numpy as np
+np.random.seed(123)
 
 def compute_loss(outputs, labels, eps=1e-5):
     if outputs == labels:
