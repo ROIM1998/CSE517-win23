@@ -32,7 +32,7 @@ class UnigramModel(NgramModel):
     def predict_next_word(self, prefix):
         return self.theta.argmax()
     
-    def evaluate(self, sentence, eps=1e-8):
+    def evaluate(self, sentence, eps=1e-300):
         if isinstance(sentence, np.ndarray) and sentence.ndim == 1:
             return np.prod(self.theta[sentence]) + eps
         elif isinstance(sentence, list) or (isinstance(sentence, np.ndarray) and sentence.ndim == 2):
