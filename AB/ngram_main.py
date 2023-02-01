@@ -1,13 +1,12 @@
+import os
 import json
 
-from utils.data_utils import read_file, text_to_feature
+from utils import build_dataset
 from models.ngram import *
 
 if __name__ == '__main__':
-    train_path, eval_path = 'AB/data/1b_benchmark/1b_benchmark.train.tokens', 'AB/data/1b_benchmark/1b_benchmark.dev.tokens'
-    train_raw_data, eval_raw_data = read_file(train_path), read_file(eval_path)
-    train_dataset = text_to_feature(train_raw_data)
-    eval_dataset = text_to_feature(eval_raw_data)
+    train_dataset, eval_dataset, test_dataset = build_dataset('1b_benchmark')
+    output_dir = 'output'
     results = {}
     unigram_model = UnigramModel()
     unigram_model.train(train_dataset)
@@ -29,4 +28,4 @@ if __name__ == '__main__':
         'train': trigram_model.perplexity(train_dataset),
         'eval': trigram_model.perplexity(eval_dataset)
         }
-    json.dump(results, open('ngram_results.json', 'w'))
+    json.dump(results, open(os.path.join(output_dir, 'ngram_results.json', 'w')))
