@@ -1,3 +1,5 @@
+import os
+import json
 import torch
 import torch.optim as optim
 
@@ -57,6 +59,8 @@ def evaluate(model, data, loss_fn, batch_size, seq_len):
     return epoch_loss / num_batches
 
 if __name__ == '__main__':
+    output_dir = 'output'
+    
     # Model arguments (hyper-parameters)
     hidden_dim=1024
     embedding_dim=1024
@@ -65,7 +69,7 @@ if __name__ == '__main__':
     tie_weights=True
     
     # Training arguments (hyper-parameters)
-    n_epochs = 10
+    n_epochs = 100
     seq_len=64
     clip=0.25
     batch_size=128
@@ -91,6 +95,7 @@ if __name__ == '__main__':
     loss_fn = torch.nn.CrossEntropyLoss()
     lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=0)
     
+    log_history = []
     best_valid_loss = float('inf')
     for epoch in range(n_epochs):
         train_loss = train(model, train_dataloader, optimizer, loss_fn, 
@@ -102,7 +107,10 @@ if __name__ == '__main__':
 
         if valid_loss < best_valid_loss:
             best_valid_loss = valid_loss
-            torch.save(model.state_dict(), 'best-val-lstm_lm.pt')
+            torch.save(model.state_dict(), os.path.join(output_dir, 'best-val-lstm_lm.pt'))
 
-        print(f'\tTrain Perplexity: {math.exp(train_loss):.3f}')
-        print(f'\tValid Perplexity: {math.exp(valid_loss):.3f}')
+        train_perplexity, valid_perplexity = math.exp(train_loss), math.exp(valid_loss)
+        print(f'\tTrain Perplexity: {train_perplexity:.3f}')
+        print(f'\tValid Perplexity: {valid_perplexity:.3f}')
+        log_history.append({'epoch': epoch, 'train_loss': train_loss, 'valid_loss': valid_loss, 'lr': optimizer.param_groups[0]['lr'], 'train_perplexity': train_perplexity, 'valid_perplexity': valid_perplexity})
+    json.dump(log_history, open(os.path.join(output_dir, 'train_states.json'), 'w'))
