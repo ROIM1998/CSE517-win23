@@ -45,7 +45,7 @@ class UnigramModel(NgramModel):
         return 2 ** ce_loss
     
 class BigramModel(NgramModel):
-    def __init__(self, eps=1):
+    def __init__(self, eps=1e-9):
         self.theta = None
         self.bigram_cnt = {}
         self.eps = eps
@@ -55,13 +55,13 @@ class BigramModel(NgramModel):
         for s in train_dataset:
             for i in range(len(s) - 1):
                 if (s[i], s[i + 1]) not in self.bigram_cnt:
-                    self.bigram_cnt[(s[i], s[i + 1])] = 1 + self.eps
+                    self.bigram_cnt[(s[i], s[i + 1])] = 1
                 else:
                     self.bigram_cnt[(s[i], s[i + 1])] += 1
 
-        self.theta = np.ones([num_unique_tokens, num_unique_tokens])
+        self.theta = np.ones([num_unique_tokens, num_unique_tokens]) * self.eps
         for (w1, w2), cnt in self.bigram_cnt.items():
-            self.theta[w1, w2] = cnt
+            self.theta[w1, w2] += cnt
         self.theta = (self.theta.T / self.theta.sum(axis=1)).T
                     
     def predict_next_word(self, prefix):
@@ -80,7 +80,7 @@ class BigramModel(NgramModel):
         return 2 ** ce_loss
     
 class TrigramModel(NgramModel):
-    def __init__(self, eps=1):
+    def __init__(self, eps=1e-9):
         self._vocab_len = 0
         self.trigram_cnt = {}
         self.prefix_cnt = {}
