@@ -18,12 +18,14 @@ def text_to_feature(lines: List[str], cutoff: int = 3, unk_token: str = '[UNK]',
     global _vocab_cnt, _vocab_to_id, _vocab, oovs
     if not _vocab:
         _vocab_cnt = dict(Counter([w for l in lines for w in l.split()]))
-        _vocab.append(stop_token)
-        _vocab_to_id[stop_token] = len(_vocab_to_id)
         _vocab.append(unk_token)
         _vocab_to_id[unk_token] = len(_vocab_to_id)
-        _vocab.append(start_token)
-        _vocab_to_id[start_token] = len(_vocab_to_id)
+        if pad_stop:
+            _vocab.append(stop_token)
+            _vocab_to_id[stop_token] = len(_vocab_to_id)
+        if pad_start:
+            _vocab.append(start_token)
+            _vocab_to_id[start_token] = len(_vocab_to_id)
         for k, v in _vocab_cnt.items():
             if v >= cutoff:
                 _vocab.append(k)

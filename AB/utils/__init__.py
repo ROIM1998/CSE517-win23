@@ -15,8 +15,11 @@ def build_dataset(data_source: str = 'wikitext') -> Tuple[Dataset]:
         dataset = load_dataset('wikitext', 'wikitext-2-v1')
         train_data, eval_data, test_data = dataset['train'], dataset['validation'], dataset['test']
         train_data, eval_data, test_data = _remove_none(train_data), _remove_none(eval_data), _remove_none(test_data)
-    train_dataset = text_to_feature(train_data, unk_token=unk_token, stop_token=stop_token)
-    eval_dataset, test_dataset = text_to_feature(eval_data, unk_token=unk_token, stop_token=stop_token), text_to_feature(test_data, unk_token=unk_token, stop_token=stop_token)
+    elif data_source == '1b_benchmark':
+        unk_token, stop_token = '[UNK]', '[STOP]'
+        train_data, eval_data, test_data = read_file('data/1b_benchmark/1b_benchmark.train.tokens'), read_file('data/1b_benchmark/1b_benchmark.dev.tokens'), read_file('data/1b_benchmark/1b_benchmark.test.tokens')
+    train_dataset = text_to_feature(train_data, unk_token=unk_token, stop_token=stop_token, pad_start=False)
+    eval_dataset, test_dataset = text_to_feature(eval_data, unk_token=unk_token, stop_token=stop_token, pad_start=False), text_to_feature(test_data, unk_token=unk_token, stop_token=stop_token, pad_start=False)
     return train_dataset, eval_dataset, test_dataset
 
 
