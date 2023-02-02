@@ -18,8 +18,9 @@ def text_to_feature(lines: List[str], cutoff: int = 3, unk_token: str = '[UNK]',
     global _vocab_cnt, _vocab_to_id, _vocab, oovs
     if not _vocab:
         _vocab_cnt = dict(Counter([w for l in lines for w in l.split()]))
-        _vocab.append(unk_token)
-        _vocab_to_id[unk_token] = len(_vocab_to_id)
+        if unk_token not in _vocab_cnt:
+            _vocab.append(unk_token)
+            _vocab_to_id[unk_token] = len(_vocab_to_id)
         if pad_stop:
             _vocab.append(stop_token)
             _vocab_to_id[stop_token] = len(_vocab_to_id)
@@ -38,3 +39,13 @@ def text_to_feature(lines: List[str], cutoff: int = 3, unk_token: str = '[UNK]',
         features += ([_vocab_to_id[start_token]] if pad_start else []) + [_vocab_to_id[w] if w in _vocab_to_id else _vocab_to_id[unk_token] for w in line.split()] + ([_vocab_to_id[stop_token]] if pad_stop else [])  
         
     return np.array(features)
+
+def load_glove_model(file_dir):
+    glove_model = {}
+    with open(file_dir,'r') as f:
+        for line in f:
+            split_line = line.split()
+            word = split_line[0]
+            embedding = np.array(split_line[1:], dtype=np.float64)
+            glove_model[word] = embedding
+    return glove_model
