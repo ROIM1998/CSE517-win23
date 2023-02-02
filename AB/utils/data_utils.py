@@ -8,10 +8,12 @@ _vocab_cnt = {}
 _vocab_to_id = {}
 oovs = set()
 
-def read_file(file_path):
+def read_file(file_path, to_lower: bool = False):
     with open(file_path, 'r') as f:
         lines = f.readlines()
         lines = [line.strip() for line in lines]
+    if to_lower:
+        lines = [line.lower() for line in lines]
     return lines
 
 def text_to_feature(lines: List[str], cutoff: int = 3, unk_token: str = '[UNK]', stop_token: str = '[STOP]', start_token: str = '[CLS]', pad_stop: bool = True, pad_start: bool = True):
