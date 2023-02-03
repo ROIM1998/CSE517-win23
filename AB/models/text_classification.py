@@ -1,3 +1,4 @@
+import math
 import torch
 import torch.nn as nn
 
@@ -10,6 +11,8 @@ class GloveTextClassification(nn.Module):
         self.glove = glove_vocab
         self.glove_vocab_len = self.glove.glove_vocab_len
         self.embedding_dim = len(self.glove.get_weight('the'))
+        self.hidden_dim = hidden_dim
+        self.num_layers = num_layers
         self.glove_embedding = nn.Embedding(self.glove_vocab_len, self.embedding_dim)
         self.glove_embedding.weight = nn.Parameter(torch.from_numpy(self.glove.glove_embeddings).float())
         self.trained_embedding = nn.Embedding(len_vocab - self.glove_vocab_len, self.embedding_dim)
@@ -18,6 +21,7 @@ class GloveTextClassification(nn.Module):
         self.fc = nn.Linear(hidden_dim, 1)
         self.relu = nn.ReLU()
         self.sigmoid = nn.Sigmoid()
+        self.init_weights()
 
     def forward(self, input_ids, text_lengths):
         mask = input_ids >= self.glove_vocab_len
@@ -39,3 +43,15 @@ class GloveTextClassification(nn.Module):
         output = self.fc(output)
         output = self.sigmoid(output)
         return output
+
+    def init_weights(self):
+        initrange_emb = 0.1
+        initrange_other = 1 / math.sqrt(self.hidden_dim)
+        self.trained_embedding.weight.data.uniform_(-initrange_emb, initrange_emb)
+        self.fc.bias.data.zero_()
+        self.fc.weight.data.uniform_(-initrange_other, initrange_other)
+        for i in range(self.num_layers):
+            self.rnn.all_weights[i][0] = torch.FloatTensor(self.embedding_dim,
+                    self.hidden_dim).uniform_(-initrange_other, initrange_other) 
+            self.rnn.all_weights[i][1] = torch.FloatTensor(self.hidden_dim, 
+                    self.hidden_dim).uniform_(-initrange_other, initrange_other)
