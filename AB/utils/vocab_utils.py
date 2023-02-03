@@ -4,7 +4,7 @@ from typing import List, Optional
 from collections import Counter
 
 class Vocab:
-    def __init__(self, corpus_path: str = None, glove_path: str = None, cutoff_frequency: int = 3, to_lower: bool = False, unk_token: Optional[str] = None, stop_token: Optional[str] = None, start_token: Optional[str] = None):
+    def __init__(self, corpus_path: str = None, corpus: str = None, glove_path: str = None, cutoff_frequency: int = 3, to_lower: bool = False, unk_token: Optional[str] = None, stop_token: Optional[str] = None, start_token: Optional[str] = None, pad_token: Optional[str] = None):
         self.corpus_path = corpus_path
         self.glove_path = glove_path
         self.glove_weights = None
@@ -21,18 +21,24 @@ class Vocab:
                 self._vocab_to_id[k] = len(self._vocab_to_id)
                 self.glove_embeddings.append(v)
             self.glove_embeddings = np.stack(self.glove_embeddings)
-        for token in [unk_token, stop_token, start_token]:
+        for token in [unk_token, stop_token, start_token, pad_token]:
             if token:
                 self._vocab.append(token)
                 self._vocab_to_id[token] = len(self._vocab_to_id)
+        if corpus is not None and corpus_path is not None:
+            raise ValueError('Only one of corpus or corpus_path can be specified')
         if corpus_path:
             lines = read_file(corpus_path, to_lower=to_lower)
-            corpus_vocab_cnt = dict(Counter([w for l in lines for w in l.split()]))
+            corpus = ' '.join(lines)
+        if corpus:
+            if to_lower:
+                corpus = corpus.lower()
+            corpus_vocab_cnt = dict(Counter(corpus.split()))
             for k, v in corpus_vocab_cnt.items():
                 if v >= cutoff_frequency and k not in self._vocab_to_id:
                     self._vocab.append(k)
                     self._vocab_to_id[k] = len(self._vocab_to_id)
-            
+
     def __len__(self):
         return len(self._vocab)
     
@@ -49,12 +55,15 @@ class Vocab:
             return self.glove_embeddings[idx]
         
 class Tokenizer:
-    def __init__(self, corpus_path: str = None, glove_path: str = None, cutoff_frequency: int = 3, to_lower: bool = False, unk_token: Optional[str] = None, stop_token: Optional[str] = None, start_token: Optional[str] = None, pad_stop: bool = False, pad_start: bool = False):
-        self.vocab = Vocab(corpus_path, glove_path, cutoff_frequency, to_lower, unk_token, stop_token, start_token)
+    def __init__(self, corpus_path: str = None, corpus: str = None, glove_path: str = None, cutoff_frequency: int = 3, to_lower: bool = False, unk_token: Optional[str] = None, stop_token: Optional[str] = None, start_token: Optional[str] = None, pad_token: Optional[str] = None, pad_stop: bool = False, pad_start: bool = False):
+        self.vocab = Vocab(corpus_path, corpus, glove_path, cutoff_frequency, to_lower, unk_token, stop_token, start_token, pad_token)
         self.to_lower = to_lower
         self.unk_token = unk_token
         self.stop_token = stop_token
         self.start_token = start_token
+        self.pad_token = pad_token
+        if pad_token is not None:
+            self.pad_token_id = self.vocab._vocab_to_id[pad_token]
         self.pad_stop = pad_stop
         self.pad_start = pad_start
         if pad_stop and not stop_token:
