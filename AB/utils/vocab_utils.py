@@ -9,35 +9,38 @@ class Vocab:
         self.glove_path = glove_path
         self.glove_weights = None
         self._vocab = []
-        self._vocab_cnt = {}
         self._vocab_to_id = {}
         self.glove_embeddings = None
-        if glove_path:
-            self.glove_weights = load_glove_model(glove_path)
-            self._vocab_cnt = None
-            self.glove_embeddings = []
-            for k, v in self.glove_weights.items():
-                self._vocab.append(k)
-                self._vocab_to_id[k] = len(self._vocab_to_id)
-                self.glove_embeddings.append(v)
-            self.glove_embeddings = np.stack(self.glove_embeddings)
-        for token in [unk_token, stop_token, start_token, pad_token]:
-            if token:
-                self._vocab.append(token)
-                self._vocab_to_id[token] = len(self._vocab_to_id)
         if corpus is not None and corpus_path is not None:
             raise ValueError('Only one of corpus or corpus_path can be specified')
         if corpus_path:
             lines = read_file(corpus_path, to_lower=to_lower)
             corpus = ' '.join(lines)
+        corpus_vocab_cnt = {}
         if corpus:
             if to_lower:
                 corpus = corpus.lower()
             corpus_vocab_cnt = dict(Counter(corpus.split()))
-            for k, v in corpus_vocab_cnt.items():
-                if v >= cutoff_frequency and k not in self._vocab_to_id:
+        else:
+            raise ValueError('Either corpus or corpus_path must be specified')
+        if glove_path:
+            self.glove_weights = load_glove_model(glove_path)
+            self.glove_embeddings = []
+            for k, v in self.glove_weights.items():
+                if k in corpus_vocab_cnt and corpus_vocab_cnt[k] >= cutoff_frequency:
                     self._vocab.append(k)
                     self._vocab_to_id[k] = len(self._vocab_to_id)
+                    self.glove_embeddings.append(v)
+            self.glove_embeddings = np.stack(self.glove_embeddings)
+        self.glove_vocab_len = len(self._vocab)
+        for token in [unk_token, stop_token, start_token, pad_token]:
+            if token:
+                self._vocab.append(token)
+                self._vocab_to_id[token] = len(self._vocab_to_id)
+        for k, v in corpus_vocab_cnt.items():
+            if v >= cutoff_frequency and k not in self._vocab_to_id:
+                self._vocab.append(k)
+                self._vocab_to_id[k] = len(self._vocab_to_id)
 
     def __len__(self):
         return len(self._vocab)

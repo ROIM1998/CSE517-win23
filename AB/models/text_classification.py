@@ -8,7 +8,7 @@ class GloveTextClassification(nn.Module):
     def __init__(self, glove_vocab: Vocab, len_vocab: int, hidden_dim: int, num_layers: int, dropout: float):
         super().__init__()
         self.glove = glove_vocab
-        self.glove_vocab_len = len(self.glove.glove_weights)
+        self.glove_vocab_len = self.glove.glove_vocab_len
         self.embedding_dim = len(self.glove.get_weight('the'))
         self.glove_embedding = nn.Embedding(self.glove_vocab_len, self.embedding_dim)
         self.glove_embedding.weight = nn.Parameter(torch.from_numpy(self.glove.glove_embeddings).float())
@@ -24,9 +24,11 @@ class GloveTextClassification(nn.Module):
         glove_batch = input_ids.clone()
         glove_batch[mask] = 0
         glove_embed = self.glove_embedding(glove_batch)
+        glove_embed[mask] = 0
         trained_batch = input_ids.clone() - self.glove_vocab_len
         trained_batch[~mask] = 0
         trained_embed = self.trained_embedding(trained_batch)
+        trained_embed[~mask] = 0
         embed = glove_embed + trained_embed
         embed = self.dropout(embed)
         packed_embedded = pack_padded_sequence(embed, text_lengths.cpu(), batch_first=True, enforce_sorted=False)

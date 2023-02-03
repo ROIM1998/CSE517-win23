@@ -43,10 +43,10 @@ def run_analogy_exp(vocab: Vocab):
         print("The second closest word to word analogy combination '%s' is '%s' with distance %.4f" % (analogy_words[i], vocab[idx[1]], distances[i][1]))
         print("The third closest word to word analogy combination '%s' is '%s' with distance %.4f" % (analogy_words[i], vocab[idx[2]], distances[i][2]))
         
-def _prepare_inputs(input_ids, text_lengths, labels):
-    input_ids = input_ids.to('cuda')
-    text_lengths = text_lengths.to('cuda')
-    labels = labels.to('cuda')
+def _prepare_inputs(input_ids, text_lengths, labels, device):
+    input_ids = input_ids.to(device)
+    text_lengths = text_lengths.to(device)
+    labels = labels.to(device)
     return input_ids, text_lengths, labels
 
 if __name__ == '__main__':
@@ -77,6 +77,7 @@ if __name__ == '__main__':
     dropout=0.65
     lr = 1e-3
     epochs=100
+    device = 'cuda'
     
     model = GloveTextClassification(tokenizer.vocab, len(tokenizer.vocab), hidden_dim=hidden_dim, num_layers=num_layers, dropout=dropout)
     for n, p in model.named_parameters():
@@ -85,12 +86,12 @@ if __name__ == '__main__':
         else:
             p.requires_grad_(True)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    model = model.to('cuda')
+    model = model.to(device)
     for i in range(epochs):
         model.train()
         epoch_loss = 0
         for idx, batch in enumerate(tqdm(train_dataloader, desc='Training: ', leave=False)):
-            input_ids, text_lengths, labels = _prepare_inputs(*batch)
+            input_ids, text_lengths, labels = _prepare_inputs(*batch, device=device)
             outputs = model(input_ids, text_lengths)
             loss = F.binary_cross_entropy(outputs, labels)
             loss.backward()
@@ -104,7 +105,7 @@ if __name__ == '__main__':
         correctness, total = 0, 0
         with torch.no_grad():
             for idx, batch in enumerate(tqdm(eval_dataloader, desc='Evaluating: ', leave=False)):
-                input_ids, text_lengths, labels = _prepare_inputs(*batch)
+                input_ids, text_lengths, labels = _prepare_inputs(*batch, device=device)
                 outputs = model(input_ids, text_lengths)
                 loss = F.binary_cross_entropy(outputs, labels)
                 epoch_eval_loss += loss.item()
