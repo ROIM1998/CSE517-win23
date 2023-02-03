@@ -1,4 +1,6 @@
+import os
 import torch
+import json
 import numpy as np
 import torch.nn.functional as F
 
@@ -75,9 +77,10 @@ if __name__ == '__main__':
     hidden_dim=512
     num_layers=2
     dropout=0.65
-    lr = 1e-3
+    lr = 1e-2
     epochs=100
     device = 'cuda'
+    output_dir = 'output'
     
     model = GloveTextClassification(tokenizer.vocab, len(tokenizer.vocab), hidden_dim=hidden_dim, num_layers=num_layers, dropout=dropout)
     for n, p in model.named_parameters():
@@ -87,6 +90,9 @@ if __name__ == '__main__':
             p.requires_grad_(True)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     model = model.to(device)
+    
+    log_history = []
+    best_eval_loss = float('inf')
     for i in range(epochs):
         model.train()
         epoch_loss = 0
@@ -112,4 +118,15 @@ if __name__ == '__main__':
                 correctness += ((outputs > 0.5) == labels).sum().item()
                 total += len(labels)
             epoch_eval_loss /= len(eval_dataloader)
-        print("Epoch %d, dev loss: %.4f, accuracy: %.4f" % (i, epoch_eval_loss, correctness / total))
+            if epoch_eval_loss < best_eval_loss:
+                best_eval_loss = epoch_eval_loss
+                torch.save(model.state_dict(), os.path.join(output_dir, 'glove_textclf_model.pt'))
+            eval_accuracy = correctness / total
+        log_history.append({
+            'epoch': i,
+            'train_loss': epoch_loss,
+            'eval_loss': epoch_eval_loss,
+            'eval_accuracy': eval_accuracy,
+        })
+        print("Epoch %d, dev loss: %.4f, accuracy: %.4f" % (i, epoch_eval_loss, eval_accuracy))
+        json.dump(log_history, open(os.path.join(output_dir, 'glove_textclf_log.json'), 'w'), indent=4)

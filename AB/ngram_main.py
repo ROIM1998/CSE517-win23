@@ -5,7 +5,7 @@ from utils import build_dataset
 from models.ngram import *
 
 if __name__ == '__main__':
-    train_dataset, eval_dataset, test_dataset = build_dataset('1b_benchmark')
+    train_dataset, eval_dataset, test_dataset = build_dataset('wikitext')
     output_dir = 'output'
     results = {}
     unigram_model = UnigramModel()
@@ -28,4 +28,4 @@ if __name__ == '__main__':
         'train': trigram_model.perplexity(train_dataset),
         'eval': trigram_model.perplexity(eval_dataset)
         }
-    json.dump(results, open(os.path.join(output_dir, 'ngram_results.json', 'w')))
+    json.dump(results, open(os.path.join(output_dir, 'ngram_wikitext_results.json'), 'w'))

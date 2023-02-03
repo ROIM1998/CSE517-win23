@@ -113,4 +113,4 @@ if __name__ == '__main__':
         print(f'\tTrain Perplexity: {train_perplexity:.3f}')
         print(f'\tValid Perplexity: {valid_perplexity:.3f}')
         log_history.append({'epoch': epoch, 'train_loss': train_loss, 'valid_loss': valid_loss, 'lr': optimizer.param_groups[0]['lr'], 'train_perplexity': train_perplexity, 'valid_perplexity': valid_perplexity})
-    json.dump(log_history, open(os.path.join(output_dir, 'train_states.json'), 'w'))
+    json.dump(log_history, open(os.path.join(output_dir, 'train_states.json'), 'w'), indent=4)
