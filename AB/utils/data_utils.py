@@ -17,6 +17,13 @@ def read_file(file_path, to_lower: bool = False):
         lines = [line.lower() for line in lines]
     return lines
 
+def reset_vocab():
+    global _vocab, _vocab_cnt, _vocab_to_id, oovs
+    _vocab = []
+    _vocab_cnt = {}
+    _vocab_to_id = {}
+    oovs = set()
+
 def text_to_feature(lines: List[str], cutoff: int = 3, unk_token: str = '[UNK]', stop_token: str = '[STOP]', start_token: str = '[CLS]', pad_stop: bool = True, pad_start: bool = True):
     global _vocab_cnt, _vocab_to_id, _vocab, oovs
     if not _vocab:

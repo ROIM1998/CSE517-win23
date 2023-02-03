@@ -21,18 +21,27 @@ class Vocab:
             if to_lower:
                 corpus = corpus.lower()
             corpus_vocab_cnt = dict(Counter(corpus.split()))
+            if glove_path:
+                self.glove_weights = load_glove_model(glove_path)
+                self.glove_embeddings = []
+                for k, v in self.glove_weights.items():
+                    if k in corpus_vocab_cnt and corpus_vocab_cnt[k] >= cutoff_frequency:
+                        self._vocab.append(k)
+                        self._vocab_to_id[k] = len(self._vocab_to_id)
+                        self.glove_embeddings.append(v)
+                self.glove_embeddings = np.stack(self.glove_embeddings)
+                self.glove_vocab_len = len(self._vocab)
         else:
-            raise ValueError('Either corpus or corpus_path must be specified')
-        if glove_path:
-            self.glove_weights = load_glove_model(glove_path)
-            self.glove_embeddings = []
-            for k, v in self.glove_weights.items():
-                if k in corpus_vocab_cnt and corpus_vocab_cnt[k] >= cutoff_frequency:
+            if glove_path:
+                print("Directly loading glove without corpus")
+                self.glove_weights = load_glove_model(glove_path)
+                self.glove_embeddings = []
+                for k, v in self.glove_weights.items():
                     self._vocab.append(k)
                     self._vocab_to_id[k] = len(self._vocab_to_id)
                     self.glove_embeddings.append(v)
-            self.glove_embeddings = np.stack(self.glove_embeddings)
-        self.glove_vocab_len = len(self._vocab)
+                self.glove_embeddings = np.stack(self.glove_embeddings)
+                self.glove_vocab_len = len(self._vocab)
         for token in [unk_token, stop_token, start_token, pad_token]:
             if token:
                 self._vocab.append(token)

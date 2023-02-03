@@ -10,7 +10,7 @@ from .data_utils import read_file, text_to_feature, _vocab
 def _remove_none(data):
     return [d['text'] for d in data if d['text']]
 
-def build_dataset(data_source: str = 'wikitext') -> Tuple[Dataset]:
+def build_dataset(data_source: str = 'wikitext', cutoff: int = 3) -> Tuple[Dataset]:
     if data_source == 'wikitext':
         unk_token, stop_token = '<unk>', '<stop>'
         dataset = load_dataset('wikitext', 'wikitext-2-v1')
@@ -19,7 +19,7 @@ def build_dataset(data_source: str = 'wikitext') -> Tuple[Dataset]:
     elif data_source == '1b_benchmark':
         unk_token, stop_token = '[UNK]', '[STOP]'
         train_data, eval_data, test_data = read_file('data/1b_benchmark/1b_benchmark.train.tokens'), read_file('data/1b_benchmark/1b_benchmark.dev.tokens'), read_file('data/1b_benchmark/1b_benchmark.test.tokens')
-    train_dataset = text_to_feature(train_data, unk_token=unk_token, stop_token=stop_token, pad_start=False)
+    train_dataset = text_to_feature(train_data, unk_token=unk_token, stop_token=stop_token, pad_start=False, cutoff=cutoff)
     eval_dataset, test_dataset = text_to_feature(eval_data, unk_token=unk_token, stop_token=stop_token, pad_start=False), text_to_feature(test_data, unk_token=unk_token, stop_token=stop_token, pad_start=False)
     return train_dataset, eval_dataset, test_dataset
 

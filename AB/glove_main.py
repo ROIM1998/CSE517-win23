@@ -1,3 +1,4 @@
+import time
 import os
 import torch
 import json
@@ -10,6 +11,7 @@ from utils.data_utils import get_raw_data, build_data_split
 from sklearn.neighbors import NearestNeighbors
 from utils.vocab_utils import Vocab, Tokenizer
 from models.text_classification import GloveTextClassification
+from sklearn.metrics import f1_score
 
 def run_similarity_exp(vocab: Vocab):
     model = NearestNeighbors(n_neighbors=2,
@@ -51,6 +53,25 @@ def _prepare_inputs(input_ids, text_lengths, labels, device):
     labels = labels.to(device)
     return input_ids, text_lengths, labels
 
+def evaluate(model, dataloader, device):
+    model.eval()
+    epoch_loss = 0
+    correctness, total = 0, 0
+    eval_labels, eval_predictions = [], []
+    with torch.no_grad():
+        for idx, batch in enumerate(tqdm(dataloader, desc='Evaluating: ', leave=False)):
+            input_ids, text_lengths, labels = _prepare_inputs(*batch, device)
+            logits = model(input_ids, text_lengths)
+            loss = F.cross_entropy(logits, labels)
+            epoch_loss += loss.item()
+            prediction = (logits > 0.5).long()
+            correctness += (prediction == labels).sum().item()
+            total += len(labels)
+            eval_labels.extend(labels.cpu().numpy().tolist())
+            eval_predictions.extend(prediction.cpu().numpy().tolist())
+    eval_f1 = f1_score(eval_labels, eval_predictions, average='macro')
+    return epoch_loss / len(dataloader), correctness / total, eval_f1
+
 if __name__ == '__main__':
     # vocab = Vocab(glove_path='data/glove/glove.6B.300d.txt')
     # run_similarity_exp(vocab)
@@ -59,7 +80,7 @@ if __name__ == '__main__':
     # Start text classification experiment
     # Data preparation
     data = get_raw_data('/home/zbw/projects/CSE517-win23/AA/data/txt_sentoken')
-    train_data, eval_data, _ = build_data_split(data, dev_ratio=0.2)
+    train_data, eval_data, test_data = build_data_split(data, dev_ratio=0.2)
     corpus = ' '.join([w for d in train_data for w in d[0].split()])
     
     tokenizer = Tokenizer(
@@ -70,14 +91,15 @@ if __name__ == '__main__':
     )
     train_dataset = [(tokenizer.tokenize(d[0]), d[1]) for d in train_data]
     eval_dataset = [(tokenizer.tokenize(d[0]), d[1]) for d in eval_data]
+    test_dataset = [(tokenizer.tokenize(d[0]), d[1]) for d in test_data]
     train_dataloader = build_text_classification_dataloader(train_dataset, batch_size=32, pad_token_id = tokenizer.pad_token_id)
     eval_dataloader = build_text_classification_dataloader(eval_dataset, batch_size=32, pad_token_id = tokenizer.pad_token_id)
-    
+    test_dataloader = build_text_classification_dataloader(test_dataset, batch_size=32, pad_token_id = tokenizer.pad_token_id)
     # Start training
     hidden_dim=512
     num_layers=2
     dropout=0.65
-    lr = 1e-2
+    lr = 1e-3
     epochs=100
     device = 'cuda'
     output_dir = 'output'
@@ -93,6 +115,8 @@ if __name__ == '__main__':
     
     log_history = []
     best_eval_loss = float('inf')
+    start_time = time.time()
+    test_loss, test_acc, test_f1 = None, None, None
     for i in range(epochs):
         model.train()
         epoch_loss = 0
@@ -106,27 +130,19 @@ if __name__ == '__main__':
             epoch_loss += loss.item()
         epoch_loss /= len(train_dataloader)
         print("Epoch %d, training loss: %.4f" % (i, epoch_loss))
-        model.eval()
-        epoch_eval_loss = 0
-        correctness, total = 0, 0
-        with torch.no_grad():
-            for idx, batch in enumerate(tqdm(eval_dataloader, desc='Evaluating: ', leave=False)):
-                input_ids, text_lengths, labels = _prepare_inputs(*batch, device=device)
-                outputs = model(input_ids, text_lengths)
-                loss = F.binary_cross_entropy(outputs, labels)
-                epoch_eval_loss += loss.item()
-                correctness += ((outputs > 0.5) == labels).sum().item()
-                total += len(labels)
-            epoch_eval_loss /= len(eval_dataloader)
-            if epoch_eval_loss < best_eval_loss:
-                best_eval_loss = epoch_eval_loss
-                torch.save(model.state_dict(), os.path.join(output_dir, 'glove_textclf_model.pt'))
-            eval_accuracy = correctness / total
+        eval_loss, eval_acc, eval_f1 = evaluate(model, eval_dataloader, device)
+        if eval_loss < best_eval_loss:
+            best_eval_loss = eval_loss
+            torch.save(model.state_dict(), os.path.join(output_dir, 'glove_textclf_model.pt'))
+            test_loss, test_acc, test_f1 = evaluate(model, test_dataloader, device)
         log_history.append({
             'epoch': i,
             'train_loss': epoch_loss,
-            'eval_loss': epoch_eval_loss,
-            'eval_accuracy': eval_accuracy,
+            'eval_loss': eval_loss,
+            'eval_accuracy': eval_acc,
+            'eval_f1': eval_f1,
         })
-        print("Epoch %d, dev loss: %.4f, accuracy: %.4f" % (i, epoch_eval_loss, eval_accuracy))
-        json.dump(log_history, open(os.path.join(output_dir, 'glove_textclf_log.json'), 'w'), indent=4)
+        print("Epoch %d, dev loss: %.4f, accuracy: %.4f, f1: %.4f" % (i, eval_loss, eval_acc, eval_f1))
+    print("Training finished, total time: %.4f" % (time.time() - start_time))
+    print("Test loss: %.4f, accuracy: %.4f, f1: %.4f" % (test_loss, test_acc, test_f1))
+    json.dump(log_history, open(os.path.join(output_dir, 'glove_textclf_log.json'), 'w'), indent=4)
