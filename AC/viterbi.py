@@ -70,6 +70,9 @@ def readable(w):
     w = ['' if v == '<start>' or v == '<eos>' else ' ' if v == '<s>' else v for v in w]
     return ''.join(w)
 
+def calculate_prob(s: List[str]) -> float:
+    return np.sum([probs[(s[i], s[i+1])] for i in range(len(s)-1)])
+
 if __name__ == '__main__':
     data = load_corpus()
     unmasked_data = [viterbi(x) for x in tqdm(data)]
