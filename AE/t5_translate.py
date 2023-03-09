@@ -2,6 +2,7 @@ import os
 import torch
 import json
 import argparse
+import time
 
 from transformers import AutoTokenizer, MT5ForConditionalGeneration
 from transformers import AdamW
@@ -12,7 +13,7 @@ args = argparse.ArgumentParser()
 args.add_argument('--source_lang', type=str, default='english')
 args.add_argument('--target_lang', type=str, default='hindi')
 args.add_argument('--model_name', type=str, default='google/mt5-small')
-args.add_argument('--num_epochs', type=int, default=3)
+args.add_argument('--num_epochs', type=int, default=5)
 args.add_argument('--eval_steps', type=int, default=200)
 args = args.parse_args()
 
@@ -50,6 +51,29 @@ def get_data(train_df, eval_df, tokenizer, source_lang, target_lang):
     eval_loader = DataLoader(eval_dataset, batch_size=32, shuffle=False)
     return train_loader, eval_loader
 
+def evaluate(model, tokenizer, eval_loader):
+    model.eval()
+    eval_loss = 0
+    accurate, total = 0, 0
+    time = time.time()
+    for batch in eval_loader:
+        input_ids, attention_mask, decoder_input_ids, decoder_attention_mask, decoder_labels = [b.to(device) for b in batch]
+        with torch.no_grad():
+            outputs = model(input_ids=input_ids, attention_mask=attention_mask, decoder_input_ids=decoder_input_ids, decoder_attention_mask=decoder_attention_mask, labels=decoder_labels)
+            loss = outputs.loss
+            total += input_ids.shape[0]
+            predictions = [tokenizer.decode(v) for v in outputs.logits.argmax(dim=-1).tolist()]
+            predictions = [v[:v.find(tokenizer.eos_token)] for v in predictions]
+            labels = [v[:v.index(1)] for v in decoder_labels.tolist()]
+            labels = [tokenizer.decode(v) for v in labels]
+            accurate += sum([pred == l for pred, l in zip(predictions, labels)])
+        eval_loss += loss.item()
+    torch.cuda.synchronize()
+    time = time.time() - time
+    eval_loss /= len(eval_loader)
+    eval_results = {'eval_loss': eval_loss, 'eval_accuracy': accurate/total, 'eval_time': time}
+    return eval_results
+
 def train(model, tokenizer, optimizer, train_loader, eval_loader, num_epochs=10, eval_steps=200):
     steps = 0
     train_state = []
@@ -65,30 +89,16 @@ def train(model, tokenizer, optimizer, train_loader, eval_loader, num_epochs=10,
             optimizer.step()
             train_loss += loss.item()
             if steps % eval_steps == 0:
-                model.eval()
-                eval_loss = 0
-                accurate, total = 0, 0
-                for batch in eval_loader:
-                    input_ids, attention_mask, decoder_input_ids, decoder_attention_mask, decoder_labels = [b.to(device) for b in batch]
-                    with torch.no_grad():
-                        outputs = model(input_ids=input_ids, attention_mask=attention_mask, decoder_input_ids=decoder_input_ids, decoder_attention_mask=decoder_attention_mask, labels=decoder_labels)
-                        loss = outputs.loss
-                        total += input_ids.shape[0]
-                        predictions = [tokenizer.decode(v) for v in outputs.logits.argmax(dim=-1).tolist()]
-                        predictions = [v[:v.find(tokenizer.eos_token)] for v in predictions]
-                        labels = [v[:v.index(1)] for v in decoder_labels.tolist()]
-                        labels = [tokenizer.decode(v) for v in labels]
-                        accurate += sum([pred == l for pred, l in zip(predictions, labels)])
-                    eval_loss += loss.item()
-                eval_loss /= len(eval_loader)
+                eval_results = evaluate(model, tokenizer, eval_loader)
+                eval_loss, eval_acc = eval_results['eval_loss'], eval_results['eval_accuracy']
                 model.train()
 
-                print(f'Epoch {steps/len(train_loader):.2f} - Train Loss: {train_loss/steps:.4f} - eval Loss: {eval_loss:.4f} - eval Acc: {accurate/total:.4f}')
+                print(f'Epoch {steps/len(train_loader):.2f} - Train Loss: {train_loss/steps:.4f} - eval Loss: {eval_loss:.4f} - eval Acc: {eval_acc:.4f}')
                 train_state.append({
                     'epoch': steps/len(train_loader),
                     'train_loss': train_loss/steps,
                     'eval_loss': eval_loss,
-                    'eval_acc': accurate/total,
+                    'eval_acc': eval_acc,
                 })
     return train_loss / steps, eval_loss, train_state
 
@@ -109,6 +119,7 @@ if __name__ == '__main__':
     optimizer = AdamW(model.parameters(), lr=5e-5)
     num_epochs=args.num_epochs
     train_loss, eval_loss, train_state = train(model, tokenizer, optimizer, train_dataloader, eval_dataloader, num_epochs=num_epochs, eval_steps=args.eval_steps)
+    eval_results = evaluate(model, tokenizer, eval_dataloader)
     output_dir = os.path.join('outputs', '%s-%s' % (source_lang, target_lang))
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -121,3 +132,4 @@ if __name__ == '__main__':
     }, os.path.join(output_dir, 'model.pt'))
 
     json.dump(train_state, open(os.path.join(output_dir, 'train_state.json'), 'w'), indent=4, sort_keys=True)
+    json.dump(eval_results, open(os.path.join(output_dir, 'eval_results.json'), 'w'), indent=4, sort_keys=True)
