@@ -1,11 +1,20 @@
 import os
 import torch
 import json
+import argparse
 
 from transformers import AutoTokenizer, MT5ForConditionalGeneration
 from transformers import AdamW
 from torch.utils.data import DataLoader, Dataset
 from utils.data_utils import read_tsv, data_split
+
+args = argparse.ArgumentParser()
+args.add_argument('--source_lang', type=str, default='english')
+args.add_argument('--target_lang', type=str, default='hindi')
+args.add_argument('--model_name', type=str, default='google/mt5-small')
+args.add_argument('--num_epochs', type=int, default=3)
+args.add_argument('--eval_steps', type=int, default=200)
+args = args.parse_args()
 
 LANGTOCOL = {'chinese': 0, 'english': 1, 'spanish': 2, 'hindi': 3, 'japanese': 4, 'norwegian': 5}
 
@@ -84,9 +93,10 @@ def train(model, tokenizer, optimizer, train_loader, eval_loader, num_epochs=10,
     return train_loss / steps, eval_loss, train_state
 
 if __name__ == '__main__':
-    source_lang = 'english'
-    target_lang = 'chinese'
-    model_name = 'google/mt5-small'
+    source_lang = args.source_lang
+    target_lang = args.target_lang
+    model_name = args.model_name
+    print('source_lang: %s, target_lang: %s, model_name: %s' % (source_lang, target_lang, model_name))
     model = MT5ForConditionalGeneration.from_pretrained(model_name)
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -97,8 +107,8 @@ if __name__ == '__main__':
     train_df, eval_df = data_split(df)
     train_dataloader, eval_dataloader = get_data(train_df, eval_df, tokenizer, source_lang, target_lang)
     optimizer = AdamW(model.parameters(), lr=5e-5)
-    num_epochs=10
-    train_loss, eval_loss, train_state = train(model, tokenizer, optimizer, train_dataloader, eval_dataloader, num_epochs=num_epochs, eval_steps=200)
+    num_epochs=args.num_epochs
+    train_loss, eval_loss, train_state = train(model, tokenizer, optimizer, train_dataloader, eval_dataloader, num_epochs=num_epochs, eval_steps=args.eval_steps)
     output_dir = os.path.join('outputs', '%s-%s' % (source_lang, target_lang))
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
