@@ -55,7 +55,7 @@ def evaluate(model, tokenizer, eval_loader):
     model.eval()
     eval_loss = 0
     accurate, total = 0, 0
-    time = time.time()
+    start_time = time.time()
     for batch in eval_loader:
         input_ids, attention_mask, decoder_input_ids, decoder_attention_mask, decoder_labels = [b.to(device) for b in batch]
         with torch.no_grad():
@@ -69,9 +69,9 @@ def evaluate(model, tokenizer, eval_loader):
             accurate += sum([pred == l for pred, l in zip(predictions, labels)])
         eval_loss += loss.item()
     torch.cuda.synchronize()
-    time = time.time() - time
+    use_time = time.time() - start_time
     eval_loss /= len(eval_loader)
-    eval_results = {'eval_loss': eval_loss, 'eval_accuracy': accurate/total, 'eval_time': time}
+    eval_results = {'eval_loss': eval_loss, 'eval_accuracy': accurate/total, 'eval_time': use_time}
     return eval_results
 
 def train(model, tokenizer, optimizer, train_loader, eval_loader, num_epochs=10, eval_steps=200):
