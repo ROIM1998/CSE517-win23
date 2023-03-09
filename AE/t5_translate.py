@@ -10,9 +10,9 @@ from torch.utils.data import DataLoader, Dataset
 from utils.data_utils import read_tsv, data_split
 
 args = argparse.ArgumentParser()
-args.add_argument('--source_lang', type=str, default='english')
+args.add_argument('--source_lang', type=str, default='norwegian')
 args.add_argument('--target_lang', type=str, default='hindi')
-args.add_argument('--model_name', type=str, default='google/mt5-small')
+args.add_argument('--model_name', type=str, default='/data0/zbw/models/mt5-small')
 args.add_argument('--num_epochs', type=int, default=5)
 args.add_argument('--eval_steps', type=int, default=200)
 args = args.parse_args()
@@ -104,32 +104,35 @@ def train(model, tokenizer, optimizer, train_loader, eval_loader, num_epochs=10,
 
 if __name__ == '__main__':
     source_lang = args.source_lang
-    target_lang = args.target_lang
-    model_name = args.model_name
-    print('source_lang: %s, target_lang: %s, model_name: %s' % (source_lang, target_lang, model_name))
-    model = MT5ForConditionalGeneration.from_pretrained(model_name)
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model.to(device)
-    
-    # Load English-Chinese translation dataset
-    df = read_tsv('data/Train.tsv')
-    train_df, eval_df = data_split(df)
-    train_dataloader, eval_dataloader = get_data(train_df, eval_df, tokenizer, source_lang, target_lang)
-    optimizer = AdamW(model.parameters(), lr=5e-5)
-    num_epochs=args.num_epochs
-    train_loss, eval_loss, train_state = train(model, tokenizer, optimizer, train_dataloader, eval_dataloader, num_epochs=num_epochs, eval_steps=args.eval_steps)
-    eval_results = evaluate(model, tokenizer, eval_dataloader)
-    output_dir = os.path.join('outputs', '%s-%s' % (source_lang, target_lang))
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-    torch.save({
-            'epoch': num_epochs,
-            'model_state_dict': model.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
-            'train_loss': train_loss,
-            'eval_loss': eval_loss,
-    }, os.path.join(output_dir, 'model.pt'))
+    # target_lang = args.target_lang
+    for target_lang in LANGTOCOL:
+        if target_lang == source_lang:
+            continue
+        model_name = args.model_name
+        print('source_lang: %s, target_lang: %s, model_name: %s' % (source_lang, target_lang, model_name))
+        model = MT5ForConditionalGeneration.from_pretrained(model_name)
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        model.to(device)
+        
+        # Load English-Chinese translation dataset
+        df = read_tsv('data/Train.tsv')
+        train_df, eval_df = data_split(df)
+        train_dataloader, eval_dataloader = get_data(train_df, eval_df, tokenizer, source_lang, target_lang)
+        optimizer = AdamW(model.parameters(), lr=5e-5)
+        num_epochs=args.num_epochs
+        train_loss, eval_loss, train_state = train(model, tokenizer, optimizer, train_dataloader, eval_dataloader, num_epochs=num_epochs, eval_steps=args.eval_steps)
+        eval_results = evaluate(model, tokenizer, eval_dataloader)
+        output_dir = os.path.join('outputs', '%s-%s' % (source_lang, target_lang))
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+        torch.save({
+                'epoch': num_epochs,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'train_loss': train_loss,
+                'eval_loss': eval_loss,
+        }, os.path.join(output_dir, 'model.pt'))
 
-    json.dump(train_state, open(os.path.join(output_dir, 'train_state.json'), 'w'), indent=4, sort_keys=True)
-    json.dump(eval_results, open(os.path.join(output_dir, 'eval_results.json'), 'w'), indent=4, sort_keys=True)
+        json.dump(train_state, open(os.path.join(output_dir, 'train_state.json'), 'w'), indent=4, sort_keys=True)
+        json.dump(eval_results, open(os.path.join(output_dir, 'eval_results.json'), 'w'), indent=4, sort_keys=True)
