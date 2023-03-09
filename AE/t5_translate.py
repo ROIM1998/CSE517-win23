@@ -33,11 +33,10 @@ class TranslationDataset(Dataset):
     def __getitem__(self, idx):
         input_ids = torch.tensor(self.inputs['input_ids'][idx])
         attention_mask = torch.tensor(self.inputs['attention_mask'][idx])
-        decoder_input_ids = torch.tensor(self.outputs['input_ids'][idx])
-        decoder_attention_mask = torch.tensor(self.outputs['attention_mask'][idx])
         decoder_labels = torch.tensor(self.outputs['input_ids'][idx])
         decoder_labels[decoder_labels == tokenizer.pad_token_id] = -100
-        return input_ids, attention_mask, decoder_input_ids, decoder_attention_mask, decoder_labels
+
+        return input_ids, attention_mask, decoder_labels
 
 def get_data(train_df, eval_df, tokenizer, source_lang, target_lang):
     # Tokenize and prepare dataset for training
@@ -71,9 +70,9 @@ def evaluate(model, tokenizer, eval_loader):
     accurate, total = 0, 0
     start_time = time.time()
     for batch in tqdm(eval_loader):
-        input_ids, attention_mask, decoder_input_ids, decoder_attention_mask, decoder_labels = [b.to(device) for b in batch]
+        input_ids, attention_mask, decoder_labels = [b.to(device) for b in batch]
         with torch.no_grad():
-            outputs = model(input_ids=input_ids, attention_mask=attention_mask, decoder_input_ids=decoder_input_ids, decoder_attention_mask=decoder_attention_mask, labels=decoder_labels)
+            outputs = model(input_ids=input_ids, attention_mask=attention_mask, labels=decoder_labels)
             loss = outputs.loss
             total += input_ids.shape[0]
             predictions = [tokenizer.decode(v) for v in outputs.logits.argmax(dim=-1).tolist()]
@@ -96,9 +95,9 @@ def train(model, tokenizer, optimizer, train_loader, eval_loader, num_epochs=10,
         train_loss = 0
         for batch in tqdm(train_loader):
             steps += 1
-            input_ids, attention_mask, decoder_input_ids, decoder_attention_mask, decoder_labels = [b.to(device) for b in batch]
+            input_ids, attention_mask, decoder_labels = [b.to(device) for b in batch]
             optimizer.zero_grad()
-            loss = model(input_ids=input_ids, attention_mask=attention_mask, decoder_input_ids=decoder_input_ids, decoder_attention_mask=decoder_attention_mask, labels=decoder_labels).loss
+            loss = model(input_ids=input_ids, attention_mask=attention_mask, labels=decoder_labels).loss
             loss.backward()
             optimizer.step()
             train_loss += loss.item()
@@ -115,6 +114,19 @@ def train(model, tokenizer, optimizer, train_loader, eval_loader, num_epochs=10,
                     'eval_acc': eval_acc,
                 })
     return train_loss / steps, eval_loss, train_state
+
+
+def inference(model, tokenizer, device, inputs, source_lang, target_lang):
+    prefix = 'translate {} to {}: '.format(source_lang, target_lang)
+    inputs = [prefix + inputs]
+    inputs = tokenizer(inputs, padding=True, truncation=True, max_length=32)
+    input_ids, attention_mask = inputs['input_ids'], inputs['attention_mask']
+    input_ids, attention_mask = torch.tensor(input_ids).to(device), torch.tensor(attention_mask).to(device)
+    with torch.no_grad():
+        outputs = model.generate(input_ids=input_ids, attention_mask=attention_mask, max_length=32)
+        prediction = tokenizer.decode(outputs[0])
+        prediction = prediction[:prediction.find(tokenizer.eos_token)]
+    return prediction.replace('<pad> ', '')
 
 if __name__ == '__main__':
     source_lang = args.source_lang
