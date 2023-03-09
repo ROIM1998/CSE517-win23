@@ -23,7 +23,7 @@ LANGTOCOL = {'chinese': 0, 'english': 1, 'spanish': 2, 'hindi': 3, 'japanese': 4
 COLTOLANG = {0: 'chinese', 1: 'english', 2: 'spanish', 3: 'hindi', 4: 'japanese', 5: 'norwegian'}
 
 class TranslationDataset(Dataset):
-    def __init__(self, inputs, outputs):
+    def __init__(self, inputs, outputs=None):
         self.inputs = inputs
         self.outputs = outputs
     
@@ -33,6 +33,8 @@ class TranslationDataset(Dataset):
     def __getitem__(self, idx):
         input_ids = torch.tensor(self.inputs['input_ids'][idx])
         attention_mask = torch.tensor(self.inputs['attention_mask'][idx])
+        if self.outputs is None:
+            return input_ids, attention_mask
         decoder_labels = torch.tensor(self.outputs['input_ids'][idx])
         decoder_labels[decoder_labels == tokenizer.pad_token_id] = -100
 
@@ -116,17 +118,38 @@ def train(model, tokenizer, optimizer, train_loader, eval_loader, num_epochs=10,
     return train_loss / steps, eval_loss, train_state
 
 
-def inference(model, tokenizer, device, inputs, source_lang, target_lang):
-    prefix = 'translate {} to {}: '.format(source_lang, target_lang)
-    inputs = [prefix + inputs]
-    inputs = tokenizer(inputs, padding=True, truncation=True, max_length=32)
-    input_ids, attention_mask = inputs['input_ids'], inputs['attention_mask']
-    input_ids, attention_mask = torch.tensor(input_ids).to(device), torch.tensor(attention_mask).to(device)
+def inference(model, tokenizer, device, test_dataloader):
+    predictions = []
+    model.eval()
     with torch.no_grad():
-        outputs = model.generate(input_ids=input_ids, attention_mask=attention_mask, max_length=32)
-        prediction = tokenizer.decode(outputs[0])
-        prediction = prediction[:prediction.find(tokenizer.eos_token)]
-    return prediction.replace('<pad> ', '')
+        for batch in tqdm(test_dataloader):
+            input_ids, attention_mask = [b.to(device) for b in batch]
+            outputs = model.generate(input_ids=input_ids, attention_mask=attention_mask, max_length=32)
+            prediction = [tokenizer.decode(v) for v in outputs.tolist()]
+            prediction = [v[:v.find(tokenizer.eos_token)] for v in prediction]
+            prediction = [v.replace('<pad> ', '') for v in prediction]
+            predictions.extend(prediction)
+    return predictions
+
+def fill_answer(test_df, model, tokenizer, device):
+    filled_df = test_df.copy()
+    test_dataset = []
+    targets = []
+    for i in tqdm(range(len(test_df))):
+        row = test_df.iloc[i]
+        source_id = [i for i in range(6) if isinstance(row[i], str) and row[i] != '?'][0]
+        target_id = [i for i in range(6) if row[i] == '?'][0]
+        source_lang, target_lang = COLTOLANG[source_id], COLTOLANG[target_id]
+        prefix = 'translate {} to {}: '.format(source_lang, target_lang)
+        test_dataset.append(prefix + row[source_id])
+        targets.append(target_id)
+    test_inputs = tokenizer(test_dataset, padding=True, max_length=32)
+    test_dataset = TranslationDataset(test_inputs)
+    test_dataloader = DataLoader(test_dataset, batch_size=128, shuffle=False)
+    predictions = inference(model, tokenizer, device, test_dataloader)
+    for i, pred in enumerate(predictions):
+        filled_df.iloc[i, targets[i]] = pred
+    return filled_df
 
 if __name__ == '__main__':
     source_lang = args.source_lang
@@ -187,3 +210,7 @@ if __name__ == '__main__':
 
             json.dump(train_state, open(os.path.join(output_dir, 'train_state.json'), 'w'), indent=4, sort_keys=True)
             json.dump(eval_results, open(os.path.join(output_dir, 'eval_results.json'), 'w'), indent=4, sort_keys=True)
+
+    test_df = read_tsv('data/Test.tsv')
+    filled_df = fill_answer(test_df, model, tokenizer, device)
+    filled_df.to_csv('data/Test-output.tsv', sep='\t', index=False, header=False)
