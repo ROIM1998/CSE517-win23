@@ -3,7 +3,9 @@ import torch
 import json
 import argparse
 import time
+import pandas as pd
 
+from tqdm import tqdm
 from transformers import AutoTokenizer, MT5ForConditionalGeneration
 from transformers import AdamW
 from torch.utils.data import DataLoader, Dataset
@@ -18,6 +20,7 @@ args.add_argument('--eval_steps', type=int, default=200)
 args = args.parse_args()
 
 LANGTOCOL = {'chinese': 0, 'english': 1, 'spanish': 2, 'hindi': 3, 'japanese': 4, 'norwegian': 5}
+COLTOLANG = {0: 'chinese', 1: 'english', 2: 'spanish', 3: 'hindi', 4: 'japanese', 5: 'norwegian'}
 
 class TranslationDataset(Dataset):
     def __init__(self, inputs, outputs):
@@ -47,16 +50,27 @@ def get_data(train_df, eval_df, tokenizer, source_lang, target_lang):
     train_dataset = TranslationDataset(train_inputs, train_outputs)
     eval_dataset = TranslationDataset(eval_inputs, eval_outputs)
 
-    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-    eval_loader = DataLoader(eval_dataset, batch_size=32, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True)
+    eval_loader = DataLoader(eval_dataset, batch_size=128, shuffle=False)
     return train_loader, eval_loader
+
+def add_instruction(df):
+    new_data = []
+    prefix_template = 'translate {} to {}: '
+    for i in tqdm(range(len(df))):
+        for src in COLTOLANG:
+            for tgt in COLTOLANG:
+                if src != tgt:
+                    prefix = prefix_template.format(COLTOLANG[src], COLTOLANG[tgt])
+                    new_data.append([prefix + df.iloc[i][src], df.iloc[i][tgt]])
+    return pd.DataFrame(new_data)
 
 def evaluate(model, tokenizer, eval_loader):
     model.eval()
     eval_loss = 0
     accurate, total = 0, 0
     start_time = time.time()
-    for batch in eval_loader:
+    for batch in tqdm(eval_loader):
         input_ids, attention_mask, decoder_input_ids, decoder_attention_mask, decoder_labels = [b.to(device) for b in batch]
         with torch.no_grad():
             outputs = model(input_ids=input_ids, attention_mask=attention_mask, decoder_input_ids=decoder_input_ids, decoder_attention_mask=decoder_attention_mask, labels=decoder_labels)
@@ -80,7 +94,7 @@ def train(model, tokenizer, optimizer, train_loader, eval_loader, num_epochs=10,
     for epoch in range(num_epochs):
         model.train()
         train_loss = 0
-        for batch in train_loader:
+        for batch in tqdm(train_loader):
             steps += 1
             input_ids, attention_mask, decoder_input_ids, decoder_attention_mask, decoder_labels = [b.to(device) for b in batch]
             optimizer.zero_grad()
@@ -104,27 +118,23 @@ def train(model, tokenizer, optimizer, train_loader, eval_loader, num_epochs=10,
 
 if __name__ == '__main__':
     source_lang = args.source_lang
-    # target_lang = args.target_lang
-    for target_lang in LANGTOCOL:
-        if target_lang == source_lang:
-            continue
-        model_name = args.model_name
-        print('source_lang: %s, target_lang: %s, model_name: %s' % (source_lang, target_lang, model_name))
+    model_name = args.model_name
+    # Load English-Chinese translation dataset
+    df = read_tsv('data/Train.tsv')
+    df.loc[0, 5] = 'null'
+    train_df, eval_df = data_split(df, train_ratio=0.8 if source_lang != 'all' else 0.95)
+    if source_lang == 'all':
         model = MT5ForConditionalGeneration.from_pretrained(model_name)
         tokenizer = AutoTokenizer.from_pretrained(model_name)
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         model.to(device)
-        
-        # Load English-Chinese translation dataset
-        df = read_tsv('data/Train.tsv')
-        df.loc[0, 5] = 'null'
-        train_df, eval_df = data_split(df)
-        train_dataloader, eval_dataloader = get_data(train_df, eval_df, tokenizer, source_lang, target_lang)
+        train_df, eval_df = add_instruction(train_df), add_instruction(eval_df)
+        train_dataloader, eval_dataloader = get_data(train_df, eval_df, tokenizer, 'chinese', 'english')
         optimizer = AdamW(model.parameters(), lr=5e-5)
         num_epochs=args.num_epochs
         train_loss, eval_loss, train_state = train(model, tokenizer, optimizer, train_dataloader, eval_dataloader, num_epochs=num_epochs, eval_steps=args.eval_steps)
         eval_results = evaluate(model, tokenizer, eval_dataloader)
-        output_dir = os.path.join('outputs', '%s-%s' % (source_lang, target_lang))
+        output_dir = os.path.join('outputs', 'all-in-one')
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
         torch.save({
@@ -137,3 +147,31 @@ if __name__ == '__main__':
 
         json.dump(train_state, open(os.path.join(output_dir, 'train_state.json'), 'w'), indent=4, sort_keys=True)
         json.dump(eval_results, open(os.path.join(output_dir, 'eval_results.json'), 'w'), indent=4, sort_keys=True)
+    else:
+        for target_lang in LANGTOCOL:
+            if target_lang == source_lang:
+                continue
+            print('source_lang: %s, target_lang: %s, model_name: %s' % (source_lang, target_lang, model_name))
+            model = MT5ForConditionalGeneration.from_pretrained(model_name)
+            tokenizer = AutoTokenizer.from_pretrained(model_name)
+            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            model.to(device)
+            
+            train_dataloader, eval_dataloader = get_data(train_df, eval_df, tokenizer, source_lang, target_lang)
+            optimizer = AdamW(model.parameters(), lr=5e-5)
+            num_epochs=args.num_epochs
+            train_loss, eval_loss, train_state = train(model, tokenizer, optimizer, train_dataloader, eval_dataloader, num_epochs=num_epochs, eval_steps=args.eval_steps)
+            eval_results = evaluate(model, tokenizer, eval_dataloader)
+            output_dir = os.path.join('outputs', '%s-%s' % (source_lang, target_lang))
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+            torch.save({
+                    'epoch': num_epochs,
+                    'model_state_dict': model.state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
+                    'train_loss': train_loss,
+                    'eval_loss': eval_loss,
+            }, os.path.join(output_dir, 'model.pt'))
+
+            json.dump(train_state, open(os.path.join(output_dir, 'train_state.json'), 'w'), indent=4, sort_keys=True)
+            json.dump(eval_results, open(os.path.join(output_dir, 'eval_results.json'), 'w'), indent=4, sort_keys=True)
