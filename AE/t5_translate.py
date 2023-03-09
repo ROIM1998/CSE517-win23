@@ -117,6 +117,7 @@ if __name__ == '__main__':
         
         # Load English-Chinese translation dataset
         df = read_tsv('data/Train.tsv')
+        df.loc[0, 5] = 'null'
         train_df, eval_df = data_split(df)
         train_dataloader, eval_dataloader = get_data(train_df, eval_df, tokenizer, source_lang, target_lang)
         optimizer = AdamW(model.parameters(), lr=5e-5)
